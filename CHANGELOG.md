@@ -9,6 +9,13 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Added
 
+- New `ResultT` monad transformer, which stacks `Result` on top of another monad
+  (`Task`, `List`, `Lazy`, ...) so computations returning e.g. `Task<Result>`
+  can be chained without unwrapping both layers by hand. The outer monad's
+  semantics are preserved: a task's own exception stays on the rejection channel
+  (it is not converted to a `Failure`), and a `Failure` in one list branch
+  doesn't affect the other branches.
+
 ### Changed
 
 ### Deprecated
