@@ -9,6 +9,14 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Added
 
+- `ResultT`, a Result monad transformer (`include Dry::Monads[:result_t]`).
+  It chains computations whose inner value is a `Result` while preserving the
+  outer monad (`Task`, `List`, ...): `ResultT(Task).lift(task).bind { ... }`.
+  `pure`/`fmap`/`bind`/`lift` and `run` follow the monad laws; a Task-raised
+  exception stays on the rejected-Task channel while a normal `Failure` is
+  carried as a fulfilled value, and failing List branches do not drop the
+  other branches. The outer monad is always passed explicitly.
+
 ### Changed
 
 ### Deprecated

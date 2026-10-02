@@ -18,7 +18,8 @@ module Dry
       result: [
         "Result",
         "Result::Fixed"
-      ]
+      ],
+      result_t: "ResultT"
     }.freeze
     @mixins = ::Concurrent::Map.new
 
