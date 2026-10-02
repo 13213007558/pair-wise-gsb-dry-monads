@@ -43,6 +43,44 @@ module Dry
         def to_proc
           @to_proc ||= method(:coerce).to_proc
         end
+
+        # Loops over the block until it signals completion with Done.
+        # Every step the block must return a Maybe wrapping either
+        # Continue (keep looping with the next state) or Done (stop and
+        # return the final value). None stops the loop and is returned
+        # as is. The loop is implemented iteratively so it doesn't grow
+        # the Ruby stack.
+        #
+        # @example
+        #   Maybe.tail_rec_m(0) do |i|
+        #     if i < 100_000
+        #       Some(Continue(i + 1))
+        #     else
+        #       Some(Done(i))
+        #     end
+        #   end # => Some(100000)
+        #
+        # @param state [Object] initial state of the loop
+        # @return [Maybe::Some, Maybe::None]
+        def tail_rec_m(state)
+          loop do
+            case (result = yield(state))
+            when Some
+              case (instruction = result.value!)
+              when TailRecM::Continue
+                state = instruction.state
+              when TailRecM::Done
+                return Some.new(instruction.value)
+              else
+                TailRecM.invalid_instruction!(instruction)
+              end
+            when None
+              return result
+            else
+              raise TypeError, "tail_rec_m block must return a Maybe, got: #{result.inspect}"
+            end
+          end
+        end
       end
 
       # Returns true for an instance of a {Maybe::None} monad.
@@ -275,6 +313,8 @@ module Dry
         Some = Some
         # @see Maybe::None
         None = None
+
+        include TailRecM::Constructors
 
         # @private
         module Constructors

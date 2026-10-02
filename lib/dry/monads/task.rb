@@ -74,6 +74,53 @@ module Dry
         # @param exc [Exception]
         # @return [Task]
         def failed(exc) = new(Promise.reject(exc))
+
+        # Loops over the block until it signals completion with Done.
+        # Every step the block must return a Task wrapping either
+        # Continue (keep looping with the next state) or Done (stop and
+        # return the final value). A failed step stops the loop and its
+        # error becomes the error of the returned task.
+        #
+        # The loop runs as a single background computation: it neither
+        # spawns a thread per step nor blocks the caller, and it doesn't
+        # grow the Ruby stack no matter how many steps are taken.
+        #
+        # @example
+        #   Task.tail_rec_m(0) do |i|
+        #     if i < 100_000
+        #       Task.pure(Continue(i + 1))
+        #     else
+        #       Task.pure(Done(i))
+        #     end
+        #   end # => Task(value=100000)
+        #
+        # @param state [Object] initial state of the loop
+        # @return [Task]
+        def tail_rec_m(state)
+          new(Promise.execute do
+            loop do
+              step = yield(state)
+
+              unless step.is_a?(Task)
+                raise TypeError, "tail_rec_m block must return a Task, got: #{step.inspect}"
+              end
+
+              case (result = step.to_result)
+              when Result::Success
+                case (instruction = result.value!)
+                when TailRecM::Continue
+                  state = instruction.state
+                when TailRecM::Done
+                  break instruction.value
+                else
+                  TailRecM.invalid_instruction!(instruction)
+                end
+              when Result::Failure
+                raise result.failure
+              end
+            end
+          end)
+        end
       end
 
       include ConversionStubs[:to_maybe, :to_result]
@@ -261,6 +308,8 @@ module Dry
 
         # @see Dry::Monads::Unit
         Unit = Unit # @private
+
+        include TailRecM::Constructors
 
         # Created a mixin with the given executor injected.
         #

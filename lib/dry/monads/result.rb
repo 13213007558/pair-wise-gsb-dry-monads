@@ -29,6 +29,44 @@ module Dry
         def pure(value = Undefined, &block)
           Success.new(Undefined.default(value, block))
         end
+
+        # Loops over the block until it signals completion with Done.
+        # Every step the block must return a Result wrapping either
+        # Continue (keep looping with the next state) or Done (stop and
+        # return the final value). A Failure stops the loop and is
+        # returned as is. The loop is implemented iteratively so it
+        # doesn't grow the Ruby stack.
+        #
+        # @example
+        #   Result.tail_rec_m(0) do |i|
+        #     if i < 100_000
+        #       Success(Continue(i + 1))
+        #     else
+        #       Success(Done(i))
+        #     end
+        #   end # => Success(100000)
+        #
+        # @param state [Object] initial state of the loop
+        # @return [Result::Success, Result::Failure]
+        def tail_rec_m(state)
+          loop do
+            case (result = yield(state))
+            when Success
+              case (instruction = result.value!)
+              when TailRecM::Continue
+                state = instruction.state
+              when TailRecM::Done
+                return Success.new(instruction.value)
+              else
+                TailRecM.invalid_instruction!(instruction)
+              end
+            when Failure
+              return result
+            else
+              raise TypeError, "tail_rec_m block must return a Result, got: #{result.inspect}"
+            end
+          end
+        end
       end
 
       # Returns self, added to keep the interface compatible with other monads.
@@ -281,6 +319,8 @@ module Dry
         Success = Result::Success
         # @see Result::Failure
         Failure = Result::Failure
+
+        include TailRecM::Constructors
 
         # Value constructors
         #

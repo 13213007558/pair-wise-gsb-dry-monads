@@ -69,6 +69,46 @@ module Dry
 
           new(xs, type)
         end
+
+        # Loops over the block until every branch signals completion with
+        # Done. Every step the block must return a list of instructions:
+        # Continue (keep looping with the next state) or Done (emit the
+        # final value for the branch). Branches are expanded in the same
+        # depth-first order a recursive #bind-based implementation would
+        # produce, but the loop is driven with an explicit stack so it
+        # doesn't grow the Ruby stack.
+        #
+        # @example
+        #   List.tail_rec_m(0) do |i|
+        #     if i < 3
+        #       List[Done(i), Continue(i + 1)]
+        #     else
+        #       List[Done(i)]
+        #     end
+        #   end # => List[0, 1, 2, 3]
+        #
+        # @param state [Object] initial state of the loop
+        # @return [List]
+        def tail_rec_m(state)
+          values = []
+          stack = [TailRecM::Continue.new(state)]
+
+          until stack.empty?
+            instruction = stack.pop
+
+            case instruction
+            when TailRecM::Continue
+              steps = coerce(yield(instruction.state))
+              steps.to_ary.reverse_each { |step| stack.push(step) }
+            when TailRecM::Done
+              values << instruction.value
+            else
+              TailRecM.invalid_instruction!(instruction)
+            end
+          end
+
+          new(values)
+        end
       end
 
       extend Dry::Core::Deprecations[:"dry-monads"]
@@ -393,6 +433,8 @@ module Dry
 
         # @see Dry::Monads::List
         L = List
+
+        include TailRecM::Constructors
 
         # List constructor.
         # @return [List]

@@ -9,6 +9,26 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Added
 
+- New `.tail_rec_m` method on Result, Maybe, List, and Task for stack-safe monadic
+  recursion (also known as tailRecM). Every step the block returns a monadic value
+  wrapping either `Continue(next_state)` (keep looping) or `Done(value)` (stop and
+  return the value), and the library drives the loop without growing the Ruby stack.
+  Failure, None, and failed tasks stop the loop with their usual semantics. For Task
+  the loop runs as a single background computation: it neither spawns a thread per
+  step nor blocks the caller.
+
+  ```ruby
+  include Dry::Monads[:result]
+
+  Result.tail_rec_m(0) do |i|
+    if i < 100_000
+      Success(Continue(i + 1))
+    else
+      Success(Done(i))
+    end
+  end # => Success(100000)
+  ```
+
 ### Changed
 
 ### Deprecated
