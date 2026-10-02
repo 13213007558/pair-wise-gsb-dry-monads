@@ -62,8 +62,67 @@ RSpec.describe(Dry::Monads::List) do
     end
 
     it "accepts type" do
-      typed = list.unfold(Object.new, result) { none }
-      expect(typed.type).to be(result)
+      typed_list = list.unfold(Object.new, result) { none }
+      expect(typed_list.type).to be(result)
+    end
+  end
+
+  describe ".tail_rec_m" do
+    let(:continue) { Dry::Monads::TailRec::Continue }
+    let(:done) { Dry::Monads::TailRec::Done }
+
+    it "iterates without nesting Ruby stack frames" do
+      recursive_list = list.tail_rec_m(0) do |count|
+        if count < 100_000
+          list[continue[count.succ]]
+        else
+          list[done[count]]
+        end
+      end
+
+      expect(recursive_list).to eql(list[100_000])
+    end
+
+    it "collects multiple branches in depth-first order" do
+      recursive_list = list.tail_rec_m(0) do |state|
+        case state
+        when 0 then list[continue[1], continue[2], done[:root]]
+        when 1 then list[continue[11], done[:one], continue[12]]
+        when 11 then list[done[:eleven]]
+        when 12 then list[]
+        when 2 then list[continue[21], continue[22], done[:two]]
+        when 21 then list[done[:two_one]]
+        when 22 then list[done[:two_two]]
+        end
+      end
+
+      expect(recursive_list).to eql(
+        list[:eleven, :one, :two_one, :two_two, :two, :root]
+      )
+    end
+
+    it "preserves an array passed as a single initial state" do
+      recursive_list = list.tail_rec_m([1, 2]) do |state|
+        list[done[state.reverse]]
+      end
+
+      expect(recursive_list).to eql(list[[2, 1]])
+    end
+
+    it "keeps siblings after an empty branch" do
+      recursive_list = list.tail_rec_m(0) do |state|
+        case state
+        when 0 then list[continue[1], done[:sibling]]
+        when 1 then list[]
+        end
+      end
+
+      expect(recursive_list).to eql(list[:sibling])
+    end
+
+    it "does not treat ordinary values as continuation markers" do
+      expect { list.tail_rec_m(0) { list[1] } }
+        .to raise_error(TypeError, /expected Continue\(state\) or Done\(value\)/)
     end
   end
 
@@ -134,6 +193,19 @@ RSpec.describe(Dry::Monads::List) do
 
     it "binds a proc" do
       expect(subject.bind(-> x { [x * 2] })).to eql(list[2, 4, 6])
+    end
+  end
+
+  describe "#tail_rec_m" do
+    let(:continue) { Dry::Monads::TailRec::Continue }
+    let(:done) { Dry::Monads::TailRec::Done }
+
+    it "runs each list state" do
+      recursive_list = subject.tail_rec_m do |state|
+        list[done[state * 2]]
+      end
+
+      expect(recursive_list).to eql(list[2, 4, 6])
     end
   end
 

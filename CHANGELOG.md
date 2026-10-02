@@ -9,6 +9,10 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Added
 
+- Added `tail_rec_m` for `Result`, `Maybe`, `List`, and `Task`. Steps return explicit
+  `Continue(state)` or `Done(value)` markers; List remains depth-first and Task advances
+  without nested Ruby frames or a thread for every step.
+
 ### Changed
 
 ### Deprecated

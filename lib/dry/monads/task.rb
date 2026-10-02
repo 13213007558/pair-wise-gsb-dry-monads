@@ -74,6 +74,18 @@ module Dry
         # @param exc [Exception]
         # @return [Task]
         def failed(exc) = new(Promise.reject(exc))
+
+        # Safely runs a tail-recursive Task computation on one executor job.
+        #
+        # @param state [Object] Initial state
+        # @param step [#call] Function called with each state
+        # @return [Task]
+        def tail_rec_m(state, step = nil, &block)
+          step ||= block
+          raise ArgumentError, "a block or callable is required" unless step.respond_to?(:call)
+
+          new { TailRec.run_task_state(state, step) }
+        end
       end
 
       include ConversionStubs[:to_maybe, :to_result]
@@ -120,6 +132,21 @@ module Dry
         self.class.new(promise.flat_map { block.(_1).promise })
       end
       deprecate :then, :bind
+
+      # Safely runs a tail-recursive Task computation without nesting Ruby frames.
+      #
+      # @param step [#call] Function called with each state
+      # @return [Task]
+      def tail_rec_m(step = nil, &block)
+        step ||= block
+        raise ArgumentError, "a block or callable is required" unless step.respond_to?(:call)
+
+        executor = promise.instance_variable_get(:@executor)
+        recursive_promise = promise.then(executor: executor) do |marker|
+          TailRec.run_task_state_marker(marker, step)
+        end
+        self.class.new(recursive_promise)
+      end
 
       # @return [String]
       def to_s
@@ -256,6 +283,8 @@ module Dry
       #
       # @api public
       module Mixin
+        include TailRec::Constructors
+
         # @private
         Task = Task
 

@@ -29,6 +29,15 @@ module Dry
         def pure(value = Undefined, &block)
           Success.new(Undefined.default(value, block))
         end
+
+        # Safely runs a tail-recursive Result computation.
+        #
+        # @param state [Object] Initial state
+        # @param step [#call] Function called with each state
+        # @return [Result::Success, Result::Failure]
+        def tail_rec_m(state, step = nil, &block)
+          pure(state).tail_rec_m(step || block)
+        end
       end
 
       # Returns self, added to keep the interface compatible with other monads.
@@ -52,6 +61,7 @@ module Dry
       # @api public
       class Success < Result
         include RightBiased::Right
+        include TailRec::Right
         include ::Dry::Equalizer(:value!)
 
         # Shortcut for Success([...])
@@ -134,6 +144,7 @@ module Dry
       # @api public
       class Failure < Result
         include RightBiased::Left
+        include TailRec::Left
         include ::Dry::Equalizer(:failure)
 
         singleton_class.alias_method(:call, :new)
@@ -277,6 +288,8 @@ module Dry
       #
       # @api public
       module Mixin
+        include TailRec::Constructors
+
         # @see Result::Success
         Success = Result::Success
         # @see Result::Failure

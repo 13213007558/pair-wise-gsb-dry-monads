@@ -11,7 +11,12 @@ RSpec.describe(Dry::Monads::Result) do
   invalid = validated::Invalid.method(:new)
   unit = Dry::Monads::Unit
 
-  let(:upcase) { :upcase.to_proc }
+    let(:upcase) { :upcase.to_proc }
+
+    it "exposes continuation markers" do
+      expect(Dry::Monads.Continue(1)).to eql(Dry::Monads::TailRec::Continue.new(1))
+      expect(Dry::Monads.Done(2)).to eql(Dry::Monads::TailRec::Done.new(2))
+    end
 
   it_behaves_like "an applicative" do
     let(:pure) { success }
@@ -75,6 +80,48 @@ RSpec.describe(Dry::Monads::Result) do
         expr_result = subject.bind(proc, :foo)
 
         expect(expr_result).to be true
+      end
+    end
+
+    describe "#tail_rec_m" do
+      let(:continue) { Dry::Monads::TailRec::Continue }
+      let(:done) { Dry::Monads::TailRec::Done }
+
+      it "iterates without nesting Ruby stack frames" do
+        monadic_result = result.tail_rec_m(0) do |count|
+          if count < 100_000
+            success[continue[count.succ]]
+          else
+            success[done[count]]
+          end
+        end
+
+        expect(monadic_result).to eql(success[100_000])
+      end
+
+      it "preserves the wrapped final value" do
+        monadic_result = subject.tail_rec_m do |value|
+          success[done[value.upcase]]
+        end
+
+        expect(monadic_result).to eql(success["FOO"])
+      end
+
+      it "stops on failure" do
+        calls = 0
+
+        monadic_result = success[0].tail_rec_m do |count|
+          calls += 1
+          failure[:boom]
+        end
+
+        expect(monadic_result).to eql(Dry::Monads::Failure(:boom))
+        expect(calls).to be(1)
+      end
+
+      it "does not treat ordinary values as continuation markers" do
+        expect { success[0].tail_rec_m { success[1] } }
+          .to raise_error(TypeError, /expected Continue\(state\) or Done\(value\)/)
       end
     end
 
@@ -368,6 +415,12 @@ RSpec.describe(Dry::Monads::Result) do
 
       it "ignores extra arguments" do
         expect(subject.bind(1, 2, 3) { raise }).to be subject
+      end
+    end
+
+    describe "#tail_rec_m" do
+      it "returns self without calling the step" do
+        expect(subject.tail_rec_m { raise }).to be(subject)
       end
     end
 

@@ -46,6 +46,18 @@ module Dry
           end
         end
 
+        # Safely runs a depth-first, multi-branch tail-recursive List computation.
+        #
+        # @param states [Object, Array] Initial states
+        # @param step [#call] Function called with each state
+        # @return [List]
+        def tail_rec_m(states, step = nil, &block)
+          step ||= block
+          raise ArgumentError, "a block or callable is required" unless step.respond_to?(:call)
+
+          TailRec.run_list([states], step)
+        end
+
         # Iteratively builds a new list from a block returning Maybe values
         #
         # @see https://hackage.haskell.org/package/base-4.12.0.0/docs/Data-List.html#g:9
@@ -103,6 +115,17 @@ module Dry
           obj, *rest = args
           List.coerce(value.map { obj.(_1, *rest) }.reduce([], &:+))
         end
+      end
+
+      # Safely runs a depth-first, multi-branch tail-recursive List computation.
+      #
+      # @param step [#call] Function called with each state
+      # @return [List]
+      def tail_rec_m(step = nil, &block)
+        step ||= block
+        raise ArgumentError, "a block or callable is required" unless step.respond_to?(:call)
+
+        TailRec.run_list(value, step)
       end
 
       # Maps a block over the list. Acts as `Array#map`.
@@ -388,6 +411,8 @@ module Dry
       #
       # @api public
       module Mixin
+        include TailRec::Constructors
+
         # @see Dry::Monads::List
         List = List
 

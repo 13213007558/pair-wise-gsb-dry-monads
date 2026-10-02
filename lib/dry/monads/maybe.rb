@@ -37,6 +37,15 @@ module Dry
           Some.new(Undefined.default(value, block))
         end
 
+        # Safely runs a tail-recursive Maybe computation.
+        #
+        # @param state [Object] Initial state
+        # @param step [#call] Function called with each state
+        # @return [Maybe::Some, Maybe::None]
+        def tail_rec_m(state, step = nil, &block)
+          coerce(state).tail_rec_m(step || block)
+        end
+
         # Reutrns a Some wrapper converted to a block
         #
         # @return [Proc]
@@ -75,6 +84,7 @@ module Dry
       class Some < Maybe
         include Dry::Equalizer(:value!)
         include RightBiased::Right
+        include TailRec::Right
 
         # Shortcut for Some([...])
         #
@@ -176,6 +186,7 @@ module Dry
       # @api public
       class None < Maybe
         include RightBiased::Left
+        include TailRec::Left
 
         @instance = new.freeze
         singleton_class.attr_reader(:instance)
@@ -269,6 +280,8 @@ module Dry
 
       # A module that can be included for easier access to Maybe monads.
       module Mixin
+        include TailRec::Constructors
+
         # @see Dry::Monads::Maybe
         Maybe = Maybe
         # @see Maybe::Some

@@ -55,14 +55,86 @@ RSpec.describe(Dry::Monads::Task) do
   end
 
   describe "#bind" do
-    it "combines tasks" do
-      chain = subject.bind { |v| task { v * 2 } }
+      it "combines tasks" do
+        chain = subject.bind { |v| task { v * 2 } }
 
-      expect(chain.value!).to be 2
+        expect(chain.value!).to be 2
+      end
     end
-  end
 
-  describe "#then" do
+    describe "#tail_rec_m" do
+      let(:continue) { Dry::Monads::TailRec::Continue }
+      let(:done) { Dry::Monads::TailRec::Done }
+
+      it "iterates without nesting Ruby stack frames" do
+        recursive_task = task.tail_rec_m(0) do |count|
+          if count < 100_000
+            task.pure(continue[count.succ])
+          else
+            task.pure(done[count])
+          end
+        end
+
+        expect(recursive_task.value!).to be(100_000)
+      end
+
+      it "does not block the caller until every step is finished" do
+        started = Queue.new
+        finish = Queue.new
+
+        recursive = task.tail_rec_m(0) do |count|
+          started << true if count.zero?
+          finish.pop if count.zero?
+          task.pure(count.zero? ? continue[count.succ] : done[count])
+        end
+
+        started.pop
+        expect(recursive).not_to be_complete
+        finish << true
+        expect(recursive.value!).to be(1)
+      end
+
+      it "advances pure steps without additional tasks" do
+        executor = Concurrent::FixedThreadPool.new(1)
+        recursive_task = task[executor] { continue[0] }.tail_rec_m(->(count) {
+          count < 100_000 ? task.pure(continue[count.succ]) : task.pure(done[count])
+        })
+
+        expect(recursive_task.value!).to be(100_000)
+      ensure
+        executor&.shutdown
+      end
+
+      it "stops when an asynchronous step fails" do
+        error = RuntimeError.new("boom")
+        calls = Queue.new
+
+        failed_task = task.tail_rec_m(0) do
+          calls << true
+          task.failed(error)
+        end
+
+        expect(failed_task.to_result).to eql(failure[error])
+        expect(calls.size).to be(1)
+      end
+
+      it "stops when the initial task has already failed" do
+        error = RuntimeError.new("initial")
+
+        expect(task.failed(error).tail_rec_m { raise }.to_result)
+          .to eql(failure[error])
+      end
+
+      it "does not treat ordinary values as continuation markers" do
+        recursive_task = task.tail_rec_m(0) { task.pure(1) }
+
+        expect { recursive_task.value! }.to raise_error(
+          TypeError, /expected Continue\(state\) or Done\(value\)/
+        )
+      end
+    end
+
+    describe "#then" do
     it "is an alias of #bind", :suppress_deprecations do
       chain = subject.then { |v| task { v * 2 } }
 

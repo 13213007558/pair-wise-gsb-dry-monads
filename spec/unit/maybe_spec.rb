@@ -103,6 +103,52 @@ RSpec.describe(Dry::Monads::Maybe) do
       end
     end
 
+    describe "#tail_rec_m" do
+      let(:continue) { Dry::Monads::TailRec::Continue }
+      let(:done) { Dry::Monads::TailRec::Done }
+
+      it "iterates without nesting Ruby stack frames" do
+        monad = maybe.tail_rec_m(0) do |count|
+          if count < 100_000
+            some[continue[count.succ]]
+          else
+            some[done[count]]
+          end
+        end
+
+        expect(monad).to eql(some[100_000])
+      end
+
+      it "coerces a nil final value to None" do
+        monad = subject.tail_rec_m do
+          some[done[nil]]
+        end
+
+        expect(monad).to be_none
+      end
+
+      it "stops when the initial state is nil" do
+        expect(maybe.tail_rec_m(nil) { raise }).to be_none
+      end
+
+      it "stops when a step returns None" do
+        calls = 0
+
+        monad = some[0].tail_rec_m do
+          calls += 1
+          none
+        end
+
+        expect(monad).to be_none
+        expect(calls).to be(1)
+      end
+
+      it "does not treat ordinary values as continuation markers" do
+        expect { some[0].tail_rec_m { some[1] } }
+          .to raise_error(TypeError, /expected Continue\(state\) or Done\(value\)/)
+      end
+    end
+
     describe "#value!" do
       it "unwraps the value" do
         expect(subject.value!).to eql("foo")
@@ -343,6 +389,12 @@ RSpec.describe(Dry::Monads::Maybe) do
 
       it "ignores arguments" do
         expect(subject.bind(1, 2, 3) { raise }).to be subject
+      end
+    end
+
+    describe "#tail_rec_m" do
+      it "returns self without calling the step" do
+        expect(subject.tail_rec_m { raise }).to be(subject)
       end
     end
 
