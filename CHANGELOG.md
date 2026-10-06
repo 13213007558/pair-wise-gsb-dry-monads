@@ -9,6 +9,8 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Added
 
+- Add `Free`, a stack-safe free monad for describing effects before choosing an interpreter. Programs can be built with `Free.pure`, `Free.suspend`, `#bind`, and `#map`, and interpreted into `Result` or `Task` with `#fold_map`.
+
 ### Changed
 
 ### Deprecated

@@ -160,6 +160,14 @@ RSpec.describe(Dry::Monads) do
     end
   end
 
+  describe "Free" do
+    describe ".Free" do
+      it "suspends an instruction" do
+        expect(m.Free(:read).instruction).to be(:read)
+      end
+    end
+  end
+
   describe "[]" do
     it "creates a module with cherry-picked monad" do
       maybe_only = Class.new { include Dry::Monads[:maybe] }
