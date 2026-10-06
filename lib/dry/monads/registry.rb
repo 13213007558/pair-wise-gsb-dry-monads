@@ -9,6 +9,7 @@ module Dry
     @constructors = nil
     @constants = {
       do: "Do::All",
+      free: "Free",
       lazy: "Lazy",
       list: "List",
       maybe: "Maybe",
