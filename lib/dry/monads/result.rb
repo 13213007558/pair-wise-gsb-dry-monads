@@ -7,6 +7,7 @@ module Dry
     # @api public
     class Result
       include Transformer
+      include Selective
       include ConversionStubs[:to_maybe, :to_validated]
 
       # @return [Object] Successful result
@@ -105,6 +106,36 @@ module Dry
         # @param _ [#call] Ignored
         # @return [Any] Return value of `f`
         def either(f, _) = f.(success)
+
+        # @see Selective#select
+        def select(alternative = Undefined, &block)
+          case @value
+          when Result::Success
+            Success.new(@value.success)
+          when Result::Failure
+            if block
+              block.call(@value.failure)
+            elsif Undefined.equal?(alternative)
+              raise ArgumentError, "select requires an alternative or a block"
+            else
+              alternative.fmap { _1.call(@value.failure) }
+            end
+          else
+            raise TypeError, "Expected Result, got #{@value.inspect}"
+          end
+        end
+
+        # @see Selective#branch
+        def branch(left, right)
+          case @value
+          when Result::Success
+            right.fmap { |function| function.call(@value.success) }
+          when Result::Failure
+            left.fmap { |function| function.call(@value.failure) }
+          else
+            raise TypeError, "Expected Result, got #{@value.inspect}"
+          end
+        end
 
         # @return [String]
         def to_s

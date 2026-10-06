@@ -10,6 +10,8 @@ module Dry
     #
     # @api public
     class Task
+      include Selective
+
       # @api private
       class Promise < ::Concurrent::Promise
         public :on_fulfill, :on_reject
@@ -108,7 +110,7 @@ module Dry
       # @param block [Proc]
       # @return [Task]
       # @api public
-      def fmap(&) = self.class.new(promise.then(&))
+      def fmap(&) = compose(promise.then(&))
 
       # Composes two tasks to run one after another.
       # A more common name is `then` exists as an alias.
@@ -200,6 +202,28 @@ module Dry
       # @return [Boolean]
       def complete? = promise.complete?
 
+      # Returns effects represented by this task.
+      #
+      # @return [Array<Task>]
+      def possible_operations
+        defined?(@possible_operations) ? @possible_operations.dup : [self]
+      end
+
+      # Returns the number of conditional alternatives in this task.
+      #
+      # @return [Integer]
+      def branch_count = defined?(@branch_count) ? @branch_count : 0
+
+      # Returns true for eagerly started tasks.
+      #
+      # @return [Boolean]
+      def started? = true
+
+      # Returns false for eagerly started tasks.
+      #
+      # @return [Boolean]
+      def deferred? = false
+
       # @return [Class]
       def monad = Task
 
@@ -224,12 +248,91 @@ module Dry
         bind { |f| arg.fmap { curry(f).(_1) } }
       end
 
+      # @see Selective#select
+      def select(alternative = Undefined, &block)
+        child = promise.flat_map do |choice|
+          case choice
+          when Result::Success
+            Promise.fulfill(choice.success)
+          when Result::Failure
+            if block
+              promise_for(block.(choice.failure))
+            elsif Undefined.equal?(alternative)
+              raise ArgumentError, "select requires an alternative or a block"
+            elsif alternative.is_a?(Task)
+              invoke_alternative(alternative, choice.failure)
+            else
+              raise TypeError, "Expected a Task alternative, got #{alternative.inspect}"
+            end
+          else
+            raise TypeError, "Expected Result, got #{choice.inspect}"
+          end
+        end
+
+        operations = possible_operations
+        count = branch_count + 1
+
+        if alternative.respond_to?(:possible_operations)
+          operations.concat(alternative.possible_operations)
+          count += alternative.branch_count
+        end
+
+        compose(child, operations, count)
+      end
+
+      # @see Selective#branch
+      def branch(left, right)
+        child = promise.flat_map do |choice|
+          case choice
+          when Result::Success
+            invoke_alternative(right, choice.success)
+          when Result::Failure
+            invoke_alternative(left, choice.failure)
+          else
+            raise TypeError, "Expected Result, got #{choice.inspect}"
+          end
+        end
+
+        operations = possible_operations
+        count = branch_count + 2
+
+        [left, right].each do |operation|
+          if operation.respond_to?(:possible_operations)
+            operations.concat(operation.possible_operations)
+            count += operation.branch_count
+          end
+        end
+
+        compose(child, operations, count)
+      end
+
       # Maps a successful result to Unit, effectively discards it
       #
       # @return [Task]
       def discard = fmap { Unit }
 
       private
+
+      def compose(child_promise, operations = possible_operations, count = branch_count)
+        task = self.class.new(child_promise)
+        task.instance_variable_set(:@possible_operations, operations.uniq)
+        task.instance_variable_set(:@branch_count, count)
+        task
+      end
+
+      def promise_for(result)
+        return Promise.fulfill(result) unless result.is_a?(Task)
+
+        child_promise = result.promise
+        child_promise = child_promise.execute unless result.started?
+        child_promise
+      end
+
+      def invoke_alternative(operation, value)
+        promise_for(operation).then do |handler|
+          handler.respond_to?(:call) ? handler.call(value) : handler
+        end.flat_map { promise_for(_1) }
+      end
 
       # @api private
       def curry(value)

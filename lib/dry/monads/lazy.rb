@@ -24,6 +24,16 @@ module Dry
         private :[]
       end
 
+      # Returns false until the lazy computation is forced.
+      #
+      # @return [Boolean]
+      def started? = evaluated?
+
+      # Returns true because the computation is not started by the constructor.
+      #
+      # @return [Boolean]
+      def deferred? = !started?
+
       # Forces the compution and returns its value.
       #
       # @return [Object]
@@ -38,6 +48,16 @@ module Dry
         @promise.execute
         self
       end
+
+      # Returns effects that may be required by this lazy computation.
+      #
+      # @return [Array<Object>]
+      def possible_operations = super
+
+      # Returns the number of alternatives represented by this computation.
+      #
+      # @return [Integer]
+      def branch_count = super
 
       # @return [Boolean]
       def evaluated? = @promise.complete?
