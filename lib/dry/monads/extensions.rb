@@ -17,3 +17,7 @@ end
 Dry::Monads.register_extension(:json) do
   require "dry/monads/extensions/json"
 end
+
+Dry::Monads.register_extension(:optics) do
+  require "dry/monads/extensions/optics"
+end
