@@ -54,6 +54,14 @@ module Dry
           new(Promise.execute(executor: executor, &))
         end
 
+        # Creates a started task labelled for static selective analysis.
+        #
+        # @param name [Object] Operation name
+        # @return [Task]
+        def operation(name, &block)
+          new(Promise.execute(&block)).tap { _1.send(:selective_operation=, name) }
+        end
+
         # Returns a completed task from the given value
         #
         # @overload pure(value)
@@ -83,9 +91,16 @@ module Dry
       attr_reader :promise
       protected :promise
 
+      # @return [Object, nil] Name of the task's primary operation
+      attr_reader :selective_operation
+
+      # @return [Array<Task>] Selective alternatives contained by the task
+      attr_reader :selective_branches
+
       # @api private
       def initialize(promise)
         @promise = promise
+        @selective_branches = EMPTY_ARRAY
       end
 
       # Retrieves the value of the computation.
@@ -108,7 +123,10 @@ module Dry
       # @param block [Proc]
       # @return [Task]
       # @api public
-      def fmap(&) = self.class.new(promise.then(&))
+      def fmap(&)
+        target = self.class.new(promise.then(&))
+        copy_selective_metadata(target, branches: true)
+      end
 
       # Composes two tasks to run one after another.
       # A more common name is `then` exists as an alias.
@@ -200,6 +218,29 @@ module Dry
       # @return [Boolean]
       def complete? = promise.complete?
 
+      # Whether the underlying computation has started.
+      #
+      # @return [Boolean]
+      def started? = !promise.unscheduled?
+
+      # Number of selective branch nodes in the task description.
+      #
+      # @return [Integer]
+      def branch_count
+        selective_branches.sum(&:branch_count) + (selective_branches.empty? ? 0 : 1)
+      end
+
+      # Operation names that may be required before the task is executed.
+      #
+      # @return [Array<Object>]
+      def possible_operations
+        if selective_branches.empty?
+          selective_operation ? [selective_operation] : EMPTY_ARRAY
+        else
+          selective_branches.flat_map(&:possible_operations).uniq
+        end
+      end
+
       # @return [Class]
       def monad = Task
 
@@ -224,10 +265,70 @@ module Dry
         bind { |f| arg.fmap { curry(f).(_1) } }
       end
 
+      # Selects from a task wrapping a Result.
+      #
+      # A task producing Success(value) keeps value and does not start the
+      # alternative. A task producing Failure(value) applies the function
+      # wrapped by the alternative task.
+      #
+      # @param alternative [Task]
+      # @return [Task]
+      def select(alternative = Undefined, &block)
+        arg = Undefined.default(alternative, &block)
+
+        child = Promise.new(
+          parent: promise,
+          executor: Concurrent::ImmediateExecutor.new
+        )
+
+        promise.on_error { child.on_reject(_1) }
+        promise.on_success do |wrapped_result|
+          unless wrapped_result.is_a?(Result)
+            raise TypeError, "Cannot select from #{wrapped_result.inspect}"
+          end
+
+          if wrapped_result.success?
+            child.on_fulfill(wrapped_result.success)
+            next
+          end
+
+          chosen = arg.fmap { |fn| fn.(wrapped_result.failure) }
+          chosen.promise.execute if chosen.promise.unscheduled?
+          chosen.promise.on_success { child.on_fulfill(_1) }
+          chosen.promise.on_error { child.on_reject(_1) }
+        rescue StandardError => exception
+          child.on_reject(exception)
+        end
+
+        selected = self.class.new(child)
+        selected.selective_branches = [self, arg]
+        selected
+      end
+
       # Maps a successful result to Unit, effectively discards it
       #
       # @return [Task]
       def discard = fmap { Unit }
+
+      # @api private
+      def with_selective_branches(branches)
+        copy = self.class.new(promise)
+        copy.selective_operation = selective_operation
+        copy.selective_branches = branches
+        copy
+      end
+
+      protected
+
+      # @api private
+      def selective_operation=(name)
+        @selective_operation = name
+      end
+
+      # @api private
+      def selective_branches=(branches)
+        @selective_branches = branches.freeze
+      end
 
       private
 
@@ -243,6 +344,13 @@ module Dry
           @curried = [value, Curry.(value)]
           @curried[1]
         end
+      end
+
+      # @api private
+      def copy_selective_metadata(target, branches: false)
+        target.selective_operation ||= selective_operation
+        target.selective_branches = selective_branches.dup if branches
+        target
       end
 
       # @api private

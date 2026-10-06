@@ -21,6 +21,14 @@ module Dry
           end
         end
 
+        # Creates a deferred task labelled for static selective analysis.
+        #
+        # @param name [Object] Operation name
+        # @return [Lazy]
+        def operation(name, &block)
+          new(&block).tap { _1.send(:selective_operation=, name) }
+        end
+
         private :[]
       end
 
@@ -42,6 +50,11 @@ module Dry
       # @return [Boolean]
       def evaluated? = @promise.complete?
       deprecate :complete?, :evaluated?
+
+      # Whether the deferred computation is still waiting to start.
+      #
+      # @return [Boolean]
+      def deferred? = promise.unscheduled?
 
       undef_method :wait
 

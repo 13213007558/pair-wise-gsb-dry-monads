@@ -106,6 +106,25 @@ module Dry
         # @return [Any] Return value of `f`
         def either(f, _) = f.(success)
 
+        # Selects from the wrapped result.
+        #
+        # A nested Success already contains the selected value, while a nested
+        # Failure applies the alternative function.
+        #
+        # @param alternative [Result]
+        # @return [Result]
+        def select(alternative = Undefined, &block)
+          result = success
+
+          unless result.is_a?(Result)
+            raise TypeError, "Cannot select from #{result.inspect}"
+          end
+
+          return Result.pure(result.success) if result.success?
+
+          Undefined.default(alternative, &block).apply(Result.pure(result.failure))
+        end
+
         # @return [String]
         def to_s
           if Unit.equal?(@value)
@@ -271,6 +290,11 @@ module Dry
           f = Undefined.default(proc, block)
           self.class.new(f.(failure), RightBiased::Left.trace_caller)
         end
+
+        # An outer failure short-circuits selective selection.
+        #
+        # @return [Result::Failure]
+        def select(_alternative = Undefined, &_block) = self
       end
 
       # A module that can be included for easier access to Result monads.
