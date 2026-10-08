@@ -11,6 +11,7 @@ module Dry
       do: "Do::All",
       lazy: "Lazy",
       list: "List",
+      measure: "Measure",
       maybe: "Maybe",
       task: "Task",
       try: "Try",
