@@ -82,6 +82,20 @@ RSpec.describe(Dry::Monads) do
     end
   end
 
+  describe "Measure" do
+    describe ".Measure" do
+      it "coerces an exact weighted hash" do
+        expect(m.Measure(a: 1r)).to eql(Dry::Monads::Measure[a: 1r])
+      end
+    end
+
+    describe ".[]" do
+      it "builds an exact weighted measure" do
+        expect(Dry::Monads::Measure[a: 1r/2, :b => 1r/2].mass).to eql(1r)
+      end
+    end
+  end
+
   describe "Result" do
     describe ".Success" do
       subject { m.Success("everything went right") }
